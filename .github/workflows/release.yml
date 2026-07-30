@@ -128,7 +128,7 @@ jobs:
             --lib "$lib" \
             --name "busbar-store-sqlite" --alias "sqlite" --kind store \
             --version "$ver" --publisher busbar \
-            --description "First-party signed kind:store plugin cdylib: the SQLite governance store packaged as a droppable busbar plugin exporting the store C ABI. Drop the built library into the plugins folder and set governance.store: sqlite." \
+            --description "First-party signed kind:store plugin cdylib: the SQLite governance store packaged as a droppable busbar plugin exporting the store C ABI. Drop the built library into the plugins folder and set store.module: sqlite." \
             --license Apache-2.0 \
             --out "${outdir}/busbar-store-sqlite-${ver}-${target}.tar.gz" \
             $unsigned_flag
