@@ -11,7 +11,7 @@ The first-party, signed `kind: store` plugin for
 [busbar](https://getbusbar.com): the SQLite governance store packaged as
 a droppable plugin — a `cdylib` exporting the store C ABI. Drop the
 built library into busbar's plugins folder, set
-`governance.store: sqlite`, and busbar loads it in-process at boot
+`store: { module: sqlite, settings: {...} }`, and busbar loads it in-process at boot
 (`dlopen`'d, not spawned as a separate process).
 
 ## Versioning
@@ -25,10 +25,10 @@ explicitly in production; do not assume they move together.
 All the actual SQLite logic — schema, key/usage/audit persistence,
 mutex-guarded `rusqlite::Connection` handling — lives in the
 `busbar-store-sqlite` `lib` crate in
-[busbarAI](https://github.com/GetBusbar/busbarAI). This crate is
+[busbarAI](https://github.com/GetBusbar/busbar). This crate is
 deliberately tiny: it adapts the engine's JSON `open` config into a
 `SqliteStore` and hands the trait object to
-[`busbar-plugin-sdk`](https://github.com/GetBusbar/busbarAI/tree/main/crates/plugin-sdk),
+[`busbar-plugin-sdk`](https://github.com/GetBusbar/busbar/tree/main/crates/plugin-sdk),
 which emits the five `extern "C"` symbols the loader resolves. (A custom
 build can also link `busbar-store-sqlite` statically instead of using
 this dynamic wrapper — see busbarAI's plugin docs.)
@@ -44,7 +44,7 @@ this dynamic wrapper — see busbarAI's plugin docs.)
 ## Build
 
 Needs a Rust toolchain ([rustup](https://rustup.rs)), and — interim,
-until [busbarAI](https://github.com/GetBusbar/busbarAI) ships publicly —
+until [busbarAI](https://github.com/GetBusbar/busbar) ships publicly —
 a sibling checkout of `busbarAI` at `../busbarAI` (see
 [Dependencies](#dependencies) below).
 
@@ -60,7 +60,7 @@ cargo fmt --all -- --check
 This crate depends on `busbar-api`, `busbar-store-sqlite`, and
 `busbar-plugin-sdk` (and, as a dev-dependency for the end-to-end test,
 `busbar-plugin-loader`) from the
-[busbarAI](https://github.com/GetBusbar/busbarAI) monorepo. Because
+[busbarAI](https://github.com/GetBusbar/busbar) monorepo. Because
 busbarAI is not yet public, `Cargo.toml` points at these as **local path
 dependencies** (`../busbarAI/crates/...`), which means this repo expects
 to be checked out as a sibling of `busbarAI`:
@@ -79,7 +79,7 @@ become git (pinned rev/tag) or crates.io dependencies instead. Grep
 
 Once built, the cdylib is packed and signed like any other busbar plugin
 — see
-[`docs/plugins.md`](https://github.com/GetBusbar/busbarAI/blob/main/docs/plugins.md#signing-and-packaging)
+[`docs/plugins.md`](https://github.com/GetBusbar/busbar/blob/main/docs/plugins.md#signing-and-packaging)
 in busbarAI for the full reference. In short:
 
 ```sh
@@ -96,9 +96,16 @@ For local development without a signing key, `busbar-plugin-pack pack
 `plugins.trust.allow_unsigned: true`.
 
 Drop the resulting tarball into busbar's configured `plugins.dir` and
-set `governance.store: sqlite` — see
-[`docs/plugins.md`](https://github.com/GetBusbar/busbarAI/blob/main/docs/plugins.md)
-for the store plugin wiring.
+set:
+
+```yaml
+store:
+  module: sqlite
+  settings: { db_path: /var/lib/busbar/governance.db }
+```
+
+— see [`docs/configuration.md`](https://github.com/GetBusbar/busbar/blob/main/docs/configuration.md)
+for the full store config reference.
 
 ## Config
 
