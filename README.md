@@ -1,11 +1,26 @@
 # store-sqlite
 
-**v1.5.0.** The first-party, signed `kind: store` plugin for
+**This plugin's version: v1.0.0.** (Independently versioned from busbar
+itself — see [Versioning](#versioning) below.)
+
+[![CI](https://github.com/GetBusbar/store-sqlite/actions/workflows/ci.yml/badge.svg)](https://github.com/GetBusbar/store-sqlite/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/github/v/release/GetBusbar/store-sqlite)](https://github.com/GetBusbar/store-sqlite/releases)
+[![License: Apache 2.0](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
+
+The first-party, signed `kind: store` plugin for
 [busbar](https://getbusbar.com): the SQLite governance store packaged as
 a droppable plugin — a `cdylib` exporting the store C ABI. Drop the
 built library into busbar's plugins folder, set
 `governance.store: sqlite`, and busbar loads it in-process at boot
 (`dlopen`'d, not spawned as a separate process).
+
+## Versioning
+
+This plugin is versioned **independently of busbar** — `v1.0.0` here says
+nothing about which busbar release it is. Compatibility with busbar is
+stated separately: **requires busbar 1.5.0+** (the release that ships the
+signed hybrid plugin ABI this crate loads over). Pin both versions
+explicitly in production; do not assume they move together.
 
 All the actual SQLite logic — schema, key/usage/audit persistence,
 mutex-guarded `rusqlite::Connection` handling — lives in the
@@ -71,9 +86,9 @@ in busbarAI for the full reference. In short:
 BUSBAR_SIGN_KEY=<signing key> busbar-plugin-pack pack \
     --lib target/release/libbusbar_store_sqlite_plugin.so \
     --name busbar-store-sqlite-plugin --alias sqlite --kind store \
-    --version 1.5.0 --publisher busbar \
+    --version 1.0.0 --publisher busbar \
     --license Apache-2.0 \
-    --out busbar-store-sqlite-plugin-1.5.0-x86_64-linux.tar.gz
+    --out busbar-store-sqlite-plugin-1.0.0-x86_64-linux.tar.gz
 ```
 
 For local development without a signing key, `busbar-plugin-pack pack
@@ -113,3 +128,10 @@ silently succeeding.
 Build under `cargo test` (which builds the cdylib as part of the test
 run) so the e2e test finds the library; it self-skips with a message if
 the cdylib isn't present.
+
+## License
+
+Licensed **Apache-2.0** ([LICENSE](LICENSE)). Contributions welcome — see
+[CONTRIBUTING.md](CONTRIBUTING.md). Governed by our
+[Code of Conduct](CODE_OF_CONDUCT.md); security issues go through
+[SECURITY.md](SECURITY.md), not public issues.
