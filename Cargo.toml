@@ -1,0 +1,29 @@
+# SPDX-License-Identifier: Apache-2.0
+[package]
+name = "busbar-store-sqlite-plugin"
+version = "1.5.0"
+publish = false            # first-party signed cdylib, shipped as a packed/signed tarball, not to crates.io
+edition = "2021"
+rust-version = "1.87"
+description = "First-party signed kind:store plugin cdylib: the SQLite governance store packaged as a droppable busbar plugin exporting the store C ABI. Drop the built library into the plugins folder and set governance.store: sqlite."
+license = "Apache-2.0"
+
+[lib]
+# The droppable artifact: a C-ABI dynamic library (.so/.dll/.dylib). The static path uses the
+# busbar-store-sqlite `lib` crate directly (this wrapper is dynamic-only, so its #[no_mangle]
+# store symbols can never collide with another statically-linked plugin's).
+crate-type = ["cdylib"]
+
+[dependencies]
+# INTERIM: busbarAI isn't public yet, so these are local path dependencies into a sibling checkout of
+# the monorepo. Once busbarAI ships publicly these should become git (pinned rev/tag) or crates.io
+# dependencies instead — same pattern as webrequest-hook's busbar-plugin-sdk dependency.
+busbar-api = { path = "../busbarAI/crates/api" }
+busbar-store-sqlite = { path = "../busbarAI/crates/store-sqlite" }
+busbar-plugin-sdk = { path = "../busbarAI/crates/plugin-sdk" }
+serde_json = "1"
+
+[dev-dependencies]
+# INTERIM local path dep, same rationale as above — dev-only (the end-to-end test loads the built
+# cdylib over the real loader ABI seam), never shipped in the plugin artifact itself.
+busbar-plugin-loader = { path = "../busbarAI/crates/plugin-loader" }

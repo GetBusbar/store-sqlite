@@ -1,0 +1,115 @@
+# store-sqlite
+
+**v1.5.0.** The first-party, signed `kind: store` plugin for
+[busbar](https://getbusbar.com): the SQLite governance store packaged as
+a droppable plugin — a `cdylib` exporting the store C ABI. Drop the
+built library into busbar's plugins folder, set
+`governance.store: sqlite`, and busbar loads it in-process at boot
+(`dlopen`'d, not spawned as a separate process).
+
+All the actual SQLite logic — schema, key/usage/audit persistence,
+mutex-guarded `rusqlite::Connection` handling — lives in the
+`busbar-store-sqlite` `lib` crate in
+[busbarAI](https://github.com/GetBusbar/busbarAI). This crate is
+deliberately tiny: it adapts the engine's JSON `open` config into a
+`SqliteStore` and hands the trait object to
+[`busbar-plugin-sdk`](https://github.com/GetBusbar/busbarAI/tree/main/crates/plugin-sdk),
+which emits the five `extern "C"` symbols the loader resolves. (A custom
+build can also link `busbar-store-sqlite` statically instead of using
+this dynamic wrapper — see busbarAI's plugin docs.)
+
+## What it is for
+
+- The **default durable store** for busbar's governance data: virtual
+  keys, usage ledgers, and the durable audit log — single-node,
+  file-backed, zero external dependencies (SQLite is bundled).
+- The reference `kind: store` plugin: a minimal example of adapting an
+  engine-agnostic storage backend to the plugin C ABI.
+
+## Build
+
+Needs a Rust toolchain ([rustup](https://rustup.rs)), and — interim,
+until [busbarAI](https://github.com/GetBusbar/busbarAI) ships publicly —
+a sibling checkout of `busbarAI` at `../busbarAI` (see
+[Dependencies](#dependencies) below).
+
+```sh
+cargo build --release      # cdylib: target/release/libbusbar_store_sqlite_plugin.{so,dylib}
+cargo test                 # unit tests + the end-to-end loader test (see tests/e2e.rs)
+cargo clippy --all-targets -- -D warnings
+cargo fmt --all -- --check
+```
+
+## Dependencies
+
+This crate depends on `busbar-api`, `busbar-store-sqlite`, and
+`busbar-plugin-sdk` (and, as a dev-dependency for the end-to-end test,
+`busbar-plugin-loader`) from the
+[busbarAI](https://github.com/GetBusbar/busbarAI) monorepo. Because
+busbarAI is not yet public, `Cargo.toml` points at these as **local path
+dependencies** (`../busbarAI/crates/...`), which means this repo expects
+to be checked out as a sibling of `busbarAI`:
+
+```
+some-parent-dir/
+├── busbarAI/
+└── store-sqlite/
+```
+
+This is an interim measure — once busbarAI ships publicly, these should
+become git (pinned rev/tag) or crates.io dependencies instead. Grep
+`Cargo.toml` for the `INTERIM` comments when doing that migration.
+
+## Pack and sign
+
+Once built, the cdylib is packed and signed like any other busbar plugin
+— see
+[`docs/plugins.md`](https://github.com/GetBusbar/busbarAI/blob/main/docs/plugins.md#signing-and-packaging)
+in busbarAI for the full reference. In short:
+
+```sh
+BUSBAR_SIGN_KEY=<signing key> busbar-plugin-pack pack \
+    --lib target/release/libbusbar_store_sqlite_plugin.so \
+    --name busbar-store-sqlite-plugin --alias sqlite --kind store \
+    --version 1.5.0 --publisher busbar \
+    --license Apache-2.0 \
+    --out busbar-store-sqlite-plugin-1.5.0-x86_64-linux.tar.gz
+```
+
+For local development without a signing key, `busbar-plugin-pack pack
+--allow-unsigned` produces a tarball busbar loads only under
+`plugins.trust.allow_unsigned: true`.
+
+Drop the resulting tarball into busbar's configured `plugins.dir` and
+set `governance.store: sqlite` — see
+[`docs/plugins.md`](https://github.com/GetBusbar/busbarAI/blob/main/docs/plugins.md)
+for the store plugin wiring.
+
+## Config
+
+| Setting | Required | Default | Notes |
+|---|---|---|---|
+| `db_path` | no | `busbar-governance.db` | Path to the SQLite database file. `:memory:` opens an in-process, non-durable database. |
+| `busy_timeout_ms` | no | `5000` | SQLite's `busy_timeout`, in milliseconds. |
+
+## Tests
+
+`cargo test` runs both the pure unit tests (`src/lib.rs` — adapting the
+engine's JSON config into a `SqliteStore`; the underlying SQLite/
+governance logic is `busbar-store-sqlite`'s own job, covered by that
+crate's own test suite) and the end-to-end test in `tests/e2e.rs`, which
+loads the *built* cdylib over the real `busbar-plugin-loader` ABI seam
+— the same seam busbar's engine uses — against a real SQLite file on
+disk. It writes a key and a usage ledger through the plugin over the C
+ABI, closes the plugin, then verifies the data actually landed on disk
+two independent ways: re-`dlopen`ing the same cdylib against the same
+file, and opening the same file directly with the plain
+`busbar-store-sqlite::SqliteStore` (a code path that never touches the
+cdylib, the C ABI, or the loader at all). A second test proves a bad
+`open` config (malformed JSON, or a `db_path` under a nonexistent
+directory) fails cleanly across the ABI rather than panicking or
+silently succeeding.
+
+Build under `cargo test` (which builds the cdylib as part of the test
+run) so the e2e test finds the library; it self-skips with a message if
+the cdylib isn't present.
