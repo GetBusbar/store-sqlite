@@ -44,6 +44,8 @@
 //! /api/v1/admin/keys`, and independently verifies both landed in the real on-disk file with a
 //! second `SqliteStore::open` that never touches the plugin/ABI/admin-API/loader.
 
+mod common;
+
 use busbar_api::{ModelTokens, Store, TierTokens, UsageLedger};
 use busbar_store_sqlite::SqliteStore;
 use std::path::PathBuf;
@@ -200,20 +202,17 @@ fn load_and_exercise_sqlite_plugin_via_file_drop() {
         "mock:\n  protocol: anthropic\n  base_url: \"http://127.0.0.1:9\"\n  api_key_env: MOCK_KEY\n",
     )
     .unwrap();
-    std::fs::write(
-        &config,
-        format!(
-            "listen: \"127.0.0.1:0\"\n\
-             store:\n  module: sqlite\n  settings: {{ db_path: \"{}\" }}\n\
-             plugins:\n  enabled: true\n  dir: {}\n  trust:\n    allow_unsigned: true\n\
-             auth:\n  chain: []\n\
-             providers:\n  mock:\n    api_key: {{ env: MOCK_KEY }}\n\
-             models:\n  test-model:\n    provider: mock\n",
-            db_path.display(),
-            plugins_dir.display()
-        ),
-    )
-    .unwrap();
+    let config_text = format!(
+        "listen: \"127.0.0.1:0\"\n\
+         store:\n  module: sqlite\n  settings: {{ db_path: \"{}\" }}\n\
+         plugins:\n  enabled: true\n  dir: {}\n  trust:\n    allow_unsigned: true\n\
+         auth:\n  chain: []\n\
+         providers:\n  mock:\n    api_key: {{ env: MOCK_KEY }}\n\
+         models:\n  test-model:\n    provider: mock\n",
+        db_path.display(),
+        plugins_dir.display()
+    );
+    std::fs::write(&config, &config_text).unwrap();
 
     // `--validate` is DELIBERATELY not used for the load-proof itself: it is manifest-only by
     // design ("no server, no network, no state, no dlopen" -- crates/busbar/src/main.rs's own
@@ -224,7 +223,9 @@ fn load_and_exercise_sqlite_plugin_via_file_drop() {
     // plugin passes the trust/manifest gate; then a REAL BOOT (no `--validate` flag) is the only
     // thing that actually `dlopen`s the plugin and runs `Store::open`/migration, so that's what
     // proves the persistence claim.
-    let out = Command::new(&busbar_bin)
+    let mut validate = Command::new(&busbar_bin);
+    common::apply_placeholder_secrets_from_files(&mut validate, &[&config, &providers]);
+    let out = validate
         .arg("--validate")
         .env("BUSBAR_CONFIG", &config)
         .env("BUSBAR_PROVIDERS", &providers)
@@ -241,7 +242,9 @@ fn load_and_exercise_sqlite_plugin_via_file_drop() {
     // plugin + config, and poll for the real sqlite file to appear -- the only genuine proof that
     // boot actually dlopened the plugin and called Store::open (which creates/migrates the file)
     // before ever handling a request.
-    let mut child = Command::new(&busbar_bin)
+    let mut boot = Command::new(&busbar_bin);
+    common::apply_placeholder_secrets_from_files(&mut boot, &[&config, &providers]);
+    let mut child = boot
         .env("BUSBAR_CONFIG", &config)
         .env("BUSBAR_PROVIDERS", &providers)
         .env("BUSBAR_STATE_FILE", "") // disable the state-snapshot file; not under test here
@@ -423,6 +426,10 @@ fn install_sqlite_plugin_via_admin_api_and_verify_persistence() {
     std::fs::create_dir_all(&plugins_dir).unwrap();
     let db_path = work.join("governance.db");
     const ADMIN_TOKEN: &str = "e2e-admin-api-token";
+    // Fixed ed25519 signing secret (64 hex = 32 bytes). busbar no longer auto-generates one, and
+    // without it the mint below is refused with a `conflict` ("signed-token minting is unavailable:
+    // no signing key is configured") rather than anything that points at the config.
+    const SIGNING_KEY: &str = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
 
     let providers = work.join("providers.yaml");
     std::fs::write(
@@ -444,7 +451,7 @@ fn install_sqlite_plugin_via_admin_api_and_verify_persistence() {
                  {store_yaml}\n\
                  plugins:\n  enabled: true\n  dir: {}\n  trust:\n    allow_unsigned: true\n\
                  identity-providers:\n  admin-tokens: {{ module: admin-tokens, token: {{ env: BUSBAR_ADMIN_TOKEN }} }}\n\
-                 auth:\n  chain: []\n  admin_auth: [admin-tokens]\n\
+                 auth:\n  chain: []\n  signing_key: {{ env: BUSBAR_SIGNING_KEY }}\n  admin_auth: [admin-tokens]\n\
                  providers:\n  mock:\n    api_key: {{ env: MOCK_KEY }}\n\
                  models:\n  test-model:\n    provider: mock\n",
                 plugins_dir.display()
@@ -476,10 +483,13 @@ fn install_sqlite_plugin_via_admin_api_and_verify_persistence() {
     };
     let admin_addr1 = format!("127.0.0.1:{admin_addr1}");
 
-    let mut child1 = Command::new(&busbar_bin)
+    let mut boot1 = Command::new(&busbar_bin);
+    common::apply_placeholder_secrets_from_files(&mut boot1, &[&config1, &providers]);
+    let mut child1 = boot1
         .env("BUSBAR_CONFIG", &config1)
         .env("BUSBAR_PROVIDERS", &providers)
         .env("BUSBAR_ADMIN_TOKEN", ADMIN_TOKEN)
+        .env("BUSBAR_SIGNING_KEY", SIGNING_KEY)
         .env("BUSBAR_STATE_FILE", "")
         .stdout(std::process::Stdio::null())
         .stderr(std::process::Stdio::null())
@@ -562,10 +572,13 @@ fn install_sqlite_plugin_via_admin_api_and_verify_persistence() {
     };
     let admin_addr2 = format!("127.0.0.1:{admin_addr2}");
 
-    let mut child2 = Command::new(&busbar_bin)
+    let mut boot2 = Command::new(&busbar_bin);
+    common::apply_placeholder_secrets_from_files(&mut boot2, &[&config2, &providers]);
+    let mut child2 = boot2
         .env("BUSBAR_CONFIG", &config2)
         .env("BUSBAR_PROVIDERS", &providers)
         .env("BUSBAR_ADMIN_TOKEN", ADMIN_TOKEN)
+        .env("BUSBAR_SIGNING_KEY", SIGNING_KEY)
         .env("BUSBAR_STATE_FILE", "")
         .stdout(std::process::Stdio::null())
         .stderr(std::process::Stdio::null())
@@ -592,12 +605,16 @@ fn install_sqlite_plugin_via_admin_api_and_verify_persistence() {
         }))
         .send()
         .expect("POST /api/v1/admin/keys");
+    // Carry the response body into the failure message: a bare status number says nothing about
+    // WHY the mint was refused, and this assertion has already once cost a debugging round-trip.
+    let mint_status = mint_resp.status().as_u16();
+    let mint_body = mint_resp.text().unwrap_or_default();
     assert_eq!(
-        mint_resp.status().as_u16(),
-        201,
-        "minting a key + AWS credential through the live sqlite-backed instance must succeed"
+        mint_status, 201,
+        "minting a key + AWS credential through the live sqlite-backed instance must succeed: \
+         {mint_body}"
     );
-    let minted: serde_json::Value = mint_resp.json().unwrap();
+    let minted: serde_json::Value = serde_json::from_str(&mint_body).unwrap();
     let key_id = minted["id"].as_str().expect("minted key id").to_string();
     let access_key_id = minted["aws_access_key_id"]
         .as_str()
