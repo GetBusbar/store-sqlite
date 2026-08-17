@@ -751,7 +751,7 @@ fn foreign_keys_cascade_is_real_not_just_the_app_level_delete() {
     );
 }
 
-// ── Mutation-testing regressions (cargo-mutants round 1, store-sqlite/src/lib.rs) ──────────────
+// ── Regression guards for `store-sqlite/src/lib.rs` predicate boundaries ────────────────────────
 
 #[test]
 fn is_memory_path_rejects_a_plain_file_path() {
