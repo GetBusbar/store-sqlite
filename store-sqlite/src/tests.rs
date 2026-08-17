@@ -751,7 +751,8 @@ fn foreign_keys_cascade_is_real_not_just_the_app_level_delete() {
     );
 }
 
-// ── Mutation-testing regressions (cargo-mutants round 1, store-sqlite/src/lib.rs) ──────────────
+// ── Operator- and boundary-level regression guards for store-sqlite/src/lib.rs: each test ────
+// pins a specific comparison, guard or early-return that the broader suite does not distinguish.
 
 #[test]
 fn is_memory_path_rejects_a_plain_file_path() {
